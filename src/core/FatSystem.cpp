@@ -33,7 +33,7 @@ FatSystem::FatSystem(string filename_, unsigned long long globalOffset_)
     type(FAT32),
     rootEntries(0)
 {
-    fd = open(filename.c_str(), O_RDONLY|O_LARGEFILE);
+    fd = open(filename.c_str(), O_RDONLY);
     writeMode = false;
 
     if (fd < 0) {
@@ -59,7 +59,7 @@ void FatSystem::enableCache()
 void FatSystem::enableWrite()
 {
     close(fd);
-    fd = open(filename.c_str(), O_RDWR|O_LARGEFILE);
+    fd = open(filename.c_str(), O_RDWR);
 
     if (fd < 0) {
         ostringstream oss;
@@ -165,8 +165,8 @@ void FatSystem::parseHeader()
         fsType = string(buffer+FAT_DISK_FS, FAT_DISK_FS_SIZE);
     }
 
-    if (bytesPerSector != 512) {
-        printf("WARNING: Bytes per sector is not 512 (%llu)\n", bytesPerSector);
+    if (!((bytesPerSector == 256) || (bytesPerSector == 512) || (bytesPerSector == 1024))) {
+        printf("WARNING: Bytes per sector is not 256, 512 or 1024 (%llu)\n", bytesPerSector);
         strange++;
     }
 

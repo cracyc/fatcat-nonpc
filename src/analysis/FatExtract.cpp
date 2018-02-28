@@ -15,7 +15,11 @@ FatExtract::FatExtract(FatSystem &system)
 void FatExtract::onDirectory(FatEntry &parent, FatEntry &entry, string name)
 {
     string directory = targetDirectory + "/" + name;
+#ifdef WIN32
+    mkdir(directory.c_str());
+#else
     mkdir(directory.c_str(), 0755);
+#endif
 }
 
 void FatExtract::onEntry(FatEntry &parent, FatEntry &entry, string name)
