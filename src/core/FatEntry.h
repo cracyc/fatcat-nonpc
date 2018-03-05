@@ -46,7 +46,8 @@ class FatEntry
 
         void updateData();
         void setData(string data);
-        long long address;
+        long long sector;
+	long offset;
         bool hasData;
         string data;
 

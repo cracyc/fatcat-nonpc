@@ -33,12 +33,19 @@ FatSystem::FatSystem(string filename_, unsigned long long globalOffset_)
     type(FAT32),
     rootEntries(0)
 {
-    fd = open(filename.c_str(), O_RDONLY);
+    dsk_err_t err = dsk_open(&fd, filename.c_str(), NULL, NULL);
     writeMode = false;
 
-    if (fd < 0) {
+    if (err != DSK_ERR_OK) {
         ostringstream oss;
-        oss << "! Unable to open the input file: " << filename << " for reading";
+        oss << "! Unable to open the input file: " << filename << " for reading err:" << err;
+
+        throw oss.str();
+    }
+    err = dsk_getgeom(fd, &geom);
+    if (err != DSK_ERR_OK) {
+        ostringstream oss;
+        oss << "! Unable to find the input file: " << filename << " geometry err:" << err;
 
         throw oss.str();
     }
@@ -58,47 +65,32 @@ void FatSystem::enableCache()
 
 void FatSystem::enableWrite()
 {
-    close(fd);
-    fd = open(filename.c_str(), O_RDWR);
-
-    if (fd < 0) {
-        ostringstream oss;
-        oss << "! Unable to open the input file: " << filename << " for writing";
-
-        throw oss.str();
-    }
-
     writeMode = true;
 }
 
 FatSystem::~FatSystem()
 {
-    close(fd);
+    dsk_close(&fd);
 }
 
 /**
  * Reading some data
  */
-int FatSystem::readData(unsigned long long address, char *buffer, int size)
+vector<char> FatSystem::readData(unsigned long long address, int size)
 {
-    if (totalSize != -1 && address+size > totalSize) {
+    if (totalSectors != -1 && address+size > totalSectors) {
         cerr << "! Trying to read outside the disk" << endl;
     }
 
-    lseek64(fd, globalOffset+address, SEEK_SET);
+    vector<char> buf(size * bytesPerSector);
+    for (int i = 0; i < size; i++)
+    {
+        dsk_err_t err = dsk_lread(fd, &geom, &buf[i * bytesPerSector], address + i);
+        if (err != DSK_ERR_OK)
+                cerr << "! Error reading sector " << address << endl;
+    }
 
-    int n;
-    int pos = 0;
-    do {
-        n = read(fd, buffer+pos, size);
-
-        if (n > 0) {
-            pos += n;
-            size -= n;
-        }
-    } while ((size>0) && (n>0));
-
-    return n;
+    return buf;
 }
 
 int FatSystem::writeData(unsigned long long address, const char *buffer, int size)
@@ -107,20 +99,14 @@ int FatSystem::writeData(unsigned long long address, const char *buffer, int siz
         throw string("Trying to write data while write mode is disabled");
     }
 
-    lseek64(fd, globalOffset+address, SEEK_SET);
+    for (int i = 0; i < size; i++)
+    {
+        dsk_err_t err = dsk_lwrite(fd, &geom, &buffer[i * bytesPerSector], address + i);
+        if (err != DSK_ERR_OK)
+                cerr << "! Error writing sector " << address << endl;
+    }
 
-    int n;
-    int pos = 0;
-    do {
-        n = write(fd, buffer, size);
-
-        if (n > 0) {
-            pos += n;
-            size -= n;
-        }
-    } while ((size>0) && (n>0));
-
-    return n;
+    return size;
 }
 
 /**
@@ -128,9 +114,8 @@ int FatSystem::writeData(unsigned long long address, const char *buffer, int siz
  */
 void FatSystem::parseHeader()
 {
-    char buffer[128];
-
-    readData(0x0, buffer, sizeof(buffer));
+    vector<char> sector = readData(0, 1);
+    char* buffer = &sector[0];
     bytesPerSector = FAT_READ_SHORT(buffer, FAT_BYTES_PER_SECTOR)&0xffff;
     sectorsPerCluster = buffer[FAT_SECTORS_PER_CLUSTER]&0xff;
     reservedSectors = FAT_READ_SHORT(buffer, FAT_RESERVED_SECTORS)&0xffff;
@@ -170,6 +155,11 @@ void FatSystem::parseHeader()
         strange++;
     }
 
+    if (bytesPerSector != geom.dg_secsize) {
+        printf("WARNING: Bytes per sector mismatch (%llu) (%llu)\n", bytesPerSector, geom.dg_secsize);
+        strange++;
+    }
+
     if (sectorsPerCluster > 128) {
         printf("WARNING: Sectors per cluster high (%llu)\n", sectorsPerCluster);
         strange++;
@@ -192,7 +182,6 @@ void FatSystem::parseHeader()
 unsigned int FatSystem::nextCluster(unsigned int cluster, int fat)
 {
     int bytes = (bits == 32 ? 4 : 2);
-    char buffer[bytes];
 
     if (!validCluster(cluster)) {
         return 0;
@@ -202,7 +191,8 @@ unsigned int FatSystem::nextCluster(unsigned int cluster, int fat)
         return cache[cluster];
     }
 
-    readData(fatStart+fatSize*fat+(bits*cluster)/8, buffer, sizeof(buffer));
+    vector<char> sector = readData(fatStart+fatSize*fat+((cluster*bytes)/bytesPerSector), 1);
+    char* buffer = &sector[(cluster*bytes)%bytesPerSector];
 
     unsigned int next;
 
@@ -244,16 +234,17 @@ unsigned int FatSystem::nextCluster(unsigned int cluster, int fat)
 bool FatSystem::writeNextCluster(unsigned int cluster, unsigned int next, int fat)
 {
     int bytes = (bits == 32 ? 4 : 2);
-    char buffer[bytes];
 
     if (!validCluster(cluster)) {
         throw string("Trying to access a cluster outside bounds");
     }
 
-    int offset = fatStart+fatSize*fat+(bits*cluster)/8;
+    int address = fatStart+fatSize*fat+(bytes*cluster)/bytesPerSector;
+    int offset = (bytes*cluster)%bytesPerSector;
+    vector<char> sector = readData(address, 1);
+    char* buffer = &sector[offset];
 
     if (bits == 12) {
-        readData(offset, buffer, bytes);
         int bit = cluster*bits;
 
         if (bit%8 != 0) {
@@ -269,7 +260,7 @@ bool FatSystem::writeNextCluster(unsigned int cluster, unsigned int next, int fa
         }
     }
 
-    return writeData(offset, buffer, bytes) == bytes;
+    return writeData(address, &sector[0], 1) != 0;
 }
 
 bool FatSystem::validCluster(unsigned int cluster)
@@ -283,7 +274,7 @@ unsigned long long FatSystem::clusterAddress(unsigned int cluster, bool isRoot)
         cluster -= 2;
     }
 
-    unsigned long long addr = (dataStart + bytesPerSector*sectorsPerCluster*cluster);
+    unsigned long long addr = (dataStart + sectorsPerCluster*cluster);
 
     if (type == FAT16 && !isRoot) {
         addr += rootEntries * FAT_ENTRY_SIZE;
@@ -330,57 +321,58 @@ vector<FatEntry> FatSystem::getEntries(unsigned int cluster, int *clusters, bool
         int localFound = 0;
         int localBadEntries = 0;
         unsigned long long address = clusterAddress(cluster, isRoot);
-        char buffer[FAT_ENTRY_SIZE];
         if (visited.find(cluster) != visited.end()) {
             cerr << "! Looping directory" << endl;
             break;
         }
         visited.insert(cluster);
 
-        unsigned int i;
-        for (i=0; i<bytesPerCluster; i+=sizeof(buffer)) {
-            // Reading data
-            readData(address, buffer, sizeof(buffer));
+        unsigned int i, j;
+        
+        for (j=0; j<sectorsPerCluster; j++) {
+            vector<char> sector = readData(address+j, 1);
+            for (i=0; i<bytesPerSector; i+=FAT_ENTRY_SIZE) {
+                char* buffer = &sector[i];
 
-            // Creating entry
-            FatEntry entry;
+                // Creating entry
+                FatEntry entry;
 
-            entry.attributes = buffer[FAT_ATTRIBUTES];
-            entry.address = address;
+                entry.attributes = buffer[FAT_ATTRIBUTES];
+                entry.sector = address+j;
+                entry.offset = i;
 
-            if (entry.attributes == FAT_ATTRIBUTES_LONGFILE) {
-                // Long file part
-                filename.append(buffer);
-            } else {
-                entry.shortName = string(buffer, 11);
-                entry.longName = filename.getFilename();
-                entry.size = FAT_READ_LONG(buffer, FAT_FILESIZE)&0xffffffff;
-                entry.cluster = (FAT_READ_SHORT(buffer, FAT_CLUSTER_LOW)&0xffff) | (FAT_READ_SHORT(buffer, FAT_CLUSTER_HIGH)<<16);
-                entry.setData(string(buffer, sizeof(buffer)));
-
-                if (!entry.isZero()) {
-                    if (entry.isCorrect() && validCluster(entry.cluster)) {
-                        entry.creationDate = FatDate(&buffer[FAT_CREATION_DATE]);
-                        entry.changeDate = FatDate(&buffer[FAT_CHANGE_DATE]);
-                        entries.push_back(entry);
-                        localFound++;
-                        foundEntries++;
-
-                        if (!isValid && entry.getFilename() == "." && entry.cluster == cluster) {
-                            isValid = true;
-                        }
-                    } else {
-                        localBadEntries++;
-                        badEntries++;
-                    }
-
-                    localZero = false;
+                if (entry.attributes == FAT_ATTRIBUTES_LONGFILE) {
+                    // Long file part
+                    filename.append(buffer);
                 } else {
-                    localZero = true;
+                    entry.shortName = string(buffer, 11);
+                    entry.longName = filename.getFilename();
+                    entry.size = FAT_READ_LONG(buffer, FAT_FILESIZE)&0xffffffff;
+                    entry.cluster = (FAT_READ_SHORT(buffer, FAT_CLUSTER_LOW)&0xffff) | (FAT_READ_SHORT(buffer, FAT_CLUSTER_HIGH)<<16);
+                    entry.setData(string(buffer, sizeof(buffer)));
+
+                    if (!entry.isZero()) {
+                        if (entry.isCorrect() && validCluster(entry.cluster)) {
+                            entry.creationDate = FatDate(&buffer[FAT_CREATION_DATE]);
+                            entry.changeDate = FatDate(&buffer[FAT_CHANGE_DATE]);
+                            entries.push_back(entry);
+                            localFound++;
+                            foundEntries++;
+
+                            if (!isValid && entry.getFilename() == "." && entry.cluster == cluster) {
+                                isValid = true;
+                            }
+                        } else {
+                            localBadEntries++;
+                            badEntries++;
+                        }
+
+                        localZero = false;
+                    } else {
+                        localZero = true;
+                    }
                 }
             }
-
-            address += sizeof(buffer);
         }
 
         int previousCluster = cluster;
@@ -501,18 +493,17 @@ void FatSystem::readFile(unsigned int cluster, unsigned int size, FILE *f, bool 
     while ((size!=0) && cluster!=FAT_LAST) {
         int currentCluster = cluster;
         int toRead = size;
-        if (toRead > bytesPerCluster || size < 0) {
-            toRead = bytesPerCluster;
+        if (toRead > (bytesPerSector*sectorsPerCluster) || size < 0) {
+            toRead = bytesPerSector*sectorsPerCluster;
         }
-        char buffer[bytesPerCluster];
-        readData(clusterAddress(cluster), buffer, toRead);
+        vector<char> buffer = readData(clusterAddress(cluster), sectorsPerCluster);
 
         if (size != -1) {
             size -= toRead;
         }
 
         // Write file data to the given file
-        fwrite(buffer, toRead, 1, f);
+        fwrite(&buffer[0], toRead, 1, f);
         fflush(f);
 
         if (contiguous) {
@@ -551,14 +542,14 @@ bool FatSystem::init()
     // Computing values
     fatStart = bytesPerSector*reservedSectors;
     dataStart = fatStart + fats*sectorsPerFat*bytesPerSector;
-    bytesPerCluster = bytesPerSector*sectorsPerCluster;
     totalSize = totalSectors*bytesPerSector;
     fatSize = sectorsPerFat*bytesPerSector;
     totalClusters = (fatSize*8)/bits;
-    dataSize = totalClusters*bytesPerCluster;
+    dataSize = totalClusters*bytesPerSector*sectorsPerCluster;
 
     if (type == FAT16) {
         int rootBytes = rootEntries*32;
+        int bytesPerCluster = sectorsPerCluster*bytesPerSector;
         rootClusters = rootBytes/bytesPerCluster + ((rootBytes%bytesPerCluster) ? 1 : 0);
     }
 
@@ -567,6 +558,7 @@ bool FatSystem::init()
 
 void FatSystem::infos()
 {
+    int bytesPerCluster = sectorsPerCluster*bytesPerSector;
     cout << "FAT Filesystem information" << endl << endl;
 
     cout << "Filesystem type: " << fsType << endl;
@@ -577,7 +569,6 @@ void FatSystem::infos()
     cout << "Disk size: " << totalSize << " (" << prettySize(totalSize) << ")" << endl;
     cout << "Bytes per sector: " << bytesPerSector << endl;
     cout << "Sectors per cluster: " << sectorsPerCluster << endl;
-    cout << "Bytes per cluster: " << bytesPerCluster << endl;
     cout << "Reserved sectors: " << reservedSectors << endl;
     if (type == FAT16) {
         cout << "Root entries: " << rootEntries << endl;
@@ -722,7 +713,7 @@ void FatSystem::rewriteUnallocated(bool random)
     srand(time(NULL));
     for (int cluster=0; cluster<totalClusters; cluster++) {
         if (freeCluster(cluster)) {
-            char buffer[bytesPerCluster];
+            char buffer[bytesPerSector*sectorsPerCluster];
             for (int i=0; i<sizeof(buffer); i++) {
                 if (random) {
                     buffer[i] = rand()&0xff;
@@ -730,7 +721,7 @@ void FatSystem::rewriteUnallocated(bool random)
                     buffer[i] = 0x0;
                 }
             }
-            writeData(clusterAddress(cluster), buffer, sizeof(buffer));
+            writeData(clusterAddress(cluster), buffer, sectorsPerCluster);
             total++;
         }
     }

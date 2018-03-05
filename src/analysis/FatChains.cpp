@@ -247,7 +247,7 @@ list<FatChain> FatChains::getOrphaned(map<int, FatChain> &chains)
 
         if (chain.orphaned) {
             if (!chain.directory) {
-                chain.size = chain.length*system.bytesPerCluster;
+                chain.size = chain.length*(system.bytesPerSector*system.sectorsPerCluster);
             }
             orphanedChains.push_back(chain);
         }

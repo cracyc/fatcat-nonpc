@@ -4,21 +4,25 @@ SOURCES = src/core/FatEntry.cpp src/core/FatFilename.cpp src/core/FatModule.cpp 
 
 OBJS = $(SOURCES:.cpp=.o)
 
-INCLUDES = -Isrc
+INCLUDES = -Isrc -Ilibdsk/include
 
 TARGET = fatcat
 
-LDFLAGS = -static
+CFLAGS = -DNOTWINDLL
+
+LDFLAGS = -static -Llibdsk/lib/.libs 
+
+LIBS = -ldsk -lz
 
 RM = rm
 
 all: $(TARGET)
 
 $(TARGET): $(OBJS)
-	$(CC) $(LDFLAGS) -o $(TARGET) $(OBJS)
+	$(CC) $(LDFLAGS) -o $(TARGET) $(OBJS) $(LIBS)
 
 .cpp.o:
-	$(CC) -c $(INCLUDES) $< -o $@
+	$(CC) $(CFLAGS) -c $(INCLUDES) $< -o $@
 
 clean:
 	$(RM) $(TARGET) $(OBJS)

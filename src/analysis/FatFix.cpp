@@ -28,7 +28,7 @@ void FatFix::onEntry(FatEntry &parent, FatEntry &entry, string name)
             fixChain(cluster, size);
         } else {
             cout << "File " << name << "/" << entry.getFilename() << " seems broken" << endl;
-            fixChain(entry.cluster, entry.size/system.bytesPerCluster+1);
+            fixChain(entry.cluster, entry.size/(system.bytesPerSector*system.sectorsPerCluster)+1);
         }
     }
 }

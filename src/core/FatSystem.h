@@ -4,7 +4,7 @@
 #include <map>
 #include <vector>
 #include <string>
-
+#include <libdsk.h>
 #include "FatEntry.h"
 #include "FatPath.h"
 
@@ -102,7 +102,8 @@ class FatSystem
         // File descriptor
         string filename;
         unsigned long long globalOffset;
-        int fd;
+        DSK_PDRIVER fd;
+        DSK_GEOMETRY geom;
         bool writeMode;
 
         // Header values
@@ -128,7 +129,6 @@ class FatSystem
         // Computed values
         unsigned long long fatStart;
         unsigned long long dataStart;
-        unsigned long long bytesPerCluster;
         unsigned long long totalSize;
         unsigned long long dataSize;
         unsigned long long fatSize;
@@ -169,7 +169,7 @@ class FatSystem
         /**
          * Read some data from the system
          */
-        int readData(unsigned long long address, char *buffer, int size);
+        vector<char> readData(unsigned long long address, int size);
 
         /**
          * Write some data to the system, write should be enabled

@@ -16,7 +16,7 @@ FatBackup::FatBackup(FatSystem &system)
 
 void FatBackup::backup(string backupFile, int fat)
 {
-    char buffer[CHUNKS_SIZES];
+/*    char buffer[CHUNKS_SIZES];
     int size = system.fatSize;
     int n = 0;
     int offset = 0;
@@ -47,12 +47,12 @@ void FatBackup::backup(string backupFile, int fat)
     }
 
     fclose(backup);
-    cout << "Successfully wrote " << backupFile << " (" << size << ")" << endl;
+    cout << "Successfully wrote " << backupFile << " (" << size << ")" << endl;*/
 }
 
 void FatBackup::patch(string backupFile, int fat)
 {
-    char buffer[CHUNKS_SIZES];
+/*    char buffer[CHUNKS_SIZES];
 
     // Opening the file
     FILE *backup = fopen(backupFile.c_str(), "r");
@@ -88,5 +88,5 @@ void FatBackup::patch(string backupFile, int fat)
 
     fclose(backup);
 
-    cout << "Successfully wrote " << backupFile << " as the FAT table of system (" << position << ")" << endl;
+    cout << "Successfully wrote " << backupFile << " as the FAT table of system (" << position << ")" << endl;*/
 }

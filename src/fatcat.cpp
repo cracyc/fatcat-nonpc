@@ -305,7 +305,8 @@ int main(int argc, char *argv[])
 
                 FatChains chains(fat);
                 unsigned long long size = chains.chainSize(cluster, &isContiguous);
-                printf("Chain size: %llu (%llu / %s)\n", size, size*fat.bytesPerCluster, prettySize(size*fat.bytesPerCluster).c_str());
+		unsigned long bytesPerCluster = fat.bytesPerSector*fat.sectorsPerCluster;
+                printf("Chain size: %llu (%llu / %s)\n", size, size*bytesPerCluster, prettySize(size*bytesPerCluster).c_str());
                 if (isContiguous) {
                     printf("Chain is contiguous\n");
                 } else {
@@ -359,7 +360,7 @@ int main(int argc, char *argv[])
                 FatPath path(entryPath);
                 FatEntry entry;
                 if (fat.findFile(path, entry)) {
-                    printf("Entry address %016llx\n", entry.address);
+                    printf("Entry sector/offset %016llx/%08lx\n", entry.sector, entry.offset);
                     printf("Attributes %02X\n", entry.attributes);
                     cout << "Found entry, cluster=" << entry.cluster;
                     if (entry.isDirectory()) {
@@ -382,10 +383,11 @@ int main(int argc, char *argv[])
                         entry.attributes = attributes;
                     }
                     if (clusterProvided || sizeProvided || attributesProvided) {
+                        vector<char> sector = fat.readData(entry.sector, 1);
                         entry.updateData();
                         fat.enableWrite();
-                        string data = entry.data;
-                        fat.writeData(entry.address, data.c_str(), entry.data.size());
+                        memcpy(&sector[entry.offset], entry.data.c_str(), entry.data.size());
+                        fat.writeData(entry.sector, &sector[0], 1);
                     }
                 } else {
                     cout << "Entry not found." << endl;

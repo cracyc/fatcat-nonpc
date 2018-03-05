@@ -11,7 +11,8 @@ using namespace std;
 
 FatEntry::FatEntry()
     : hasData(false),
-      address(0)
+      sector(0),
+      offset(0)
 {
 }
 
