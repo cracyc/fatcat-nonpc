@@ -26,6 +26,7 @@ FatSystem::FatSystem(string filename_, unsigned long long globalOffset_)
     filename(filename_),
     globalOffset(globalOffset_),
     totalSize(-1),
+    totalSectors(-1),
     listDeleted(false),
     statsComputed(false),
     freeClusters(0),
@@ -82,10 +83,10 @@ vector<char> FatSystem::readData(unsigned long long address, int size)
         cerr << "! Trying to read outside the disk" << endl;
     }
 
-    vector<char> buf(size * bytesPerSector);
+    vector<char> buf(size * geom.dg_secsize);
     for (int i = 0; i < size; i++)
     {
-        dsk_err_t err = dsk_lread(fd, &geom, &buf[i * bytesPerSector], address + i);
+        dsk_err_t err = dsk_lread(fd, &geom, &buf[i * geom.dg_secsize], address + i);
         if (err != DSK_ERR_OK)
                 cerr << "! Error reading sector " << address << endl;
     }
@@ -101,7 +102,7 @@ int FatSystem::writeData(unsigned long long address, const char *buffer, int siz
 
     for (int i = 0; i < size; i++)
     {
-        dsk_err_t err = dsk_lwrite(fd, &geom, &buffer[i * bytesPerSector], address + i);
+        dsk_err_t err = dsk_lwrite(fd, &geom, &buffer[i * geom.dg_secsize], address + i);
         if (err != DSK_ERR_OK)
                 cerr << "! Error writing sector " << address << endl;
     }
@@ -139,6 +140,9 @@ void FatSystem::parseHeader()
         totalSectors = FAT_READ_SHORT(buffer, FAT16_TOTAL_SECTORS)&0xffff;
         if (!totalSectors) {
             totalSectors = FAT_READ_LONG(buffer, FAT_TOTAL_SECTORS)&0xffffffff;
+        }
+        if((totalSectors / sectorsPerCluster) < 0xff4) {
+            bits = 12;
         }
     } else {
         type = FAT32;
@@ -540,8 +544,8 @@ bool FatSystem::init()
     parseHeader();
 
     // Computing values
-    fatStart = bytesPerSector*reservedSectors;
-    dataStart = fatStart + fats*sectorsPerFat*bytesPerSector;
+    fatStart = reservedSectors;
+    dataStart = fatStart + fats*sectorsPerFat;
     totalSize = totalSectors*bytesPerSector;
     fatSize = sectorsPerFat*bytesPerSector;
     totalClusters = (fatSize*8)/bits;
@@ -576,9 +580,9 @@ void FatSystem::infos()
     }
     cout << "Sectors per FAT: " << sectorsPerFat << endl;
     cout << "Fat size: " << fatSize << " (" << prettySize(fatSize) << ")" << endl;
-    printf("FAT1 start address: %016llx\n", fatStart);
-    printf("FAT2 start address: %016llx\n", fatStart+fatSize);
-    printf("Data start address: %016llx\n", dataStart);
+    printf("FAT1 start sector: %llx\n", fatStart);
+    printf("FAT2 start sector: %llx\n", fatStart+fatSize);
+    printf("Data start sector: %llx\n", dataStart);
     cout << "Root directory cluster: " << rootDirectory << endl;
     cout << "Disk label: " << diskLabel << endl;
     cout << endl;

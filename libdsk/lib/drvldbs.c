@@ -806,8 +806,8 @@ static dsk_err_t getgeom_callback(PLDBS ldbs, dsk_pcyl_t cyl, dsk_phead_t head,
 	}
 
 	h = head ? 1 : 0;
-	if (se->id_psh < stats->minsec[h]) stats->minsec[h] = se->id_psh;	
-	if (se->id_psh > stats->maxsec[h]) stats->maxsec[h] = se->id_psh;	
+	if (se->id_sec < stats->minsec[h]) stats->minsec[h] = se->id_sec;	
+	if (se->id_sec > stats->maxsec[h]) stats->maxsec[h] = se->id_sec;	
 
 	/* Possibly 'extended surface' geometry if sectors on head 1 
 	 * have head IDs of 0 */
@@ -859,7 +859,7 @@ dsk_err_t ldbsdisk_getgeom(DSK_DRIVER *pdriver, DSK_GEOMETRY *geom)
 	 * give us a decent chance at determining the drive geometry 
 	 * ourselves. */
 	memset(&stats, 0, sizeof(stats));
-	dg_stdformat(&stats.dg, FMT_180K, NULL, NULL);
+	//dg_stdformat(&stats.dg, FMT_180K, NULL, NULL);
 	stats.minsec[0] = stats.minsec[1] = 256;
 	stats.maxsec[0] = stats.maxsec[1] = 0;
 

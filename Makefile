@@ -8,9 +8,15 @@ INCLUDES = -Isrc -Ilibdsk/include
 
 TARGET = fatcat
 
-CFLAGS = -DNOTWINDLL
-
-LDFLAGS = -static -Llibdsk/lib/.libs 
+ifeq ($(OS),Windows_NT)
+	CFLAGS = -DNOTWINDLL
+	LDFLAGS = -static
+else
+	CFLAGS = 
+	LDFLAGS = 
+endif
+	
+LDFLAGS += -Llibdsk/lib/.libs 
 
 LIBS = -ldsk -lz
 
