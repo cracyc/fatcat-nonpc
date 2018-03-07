@@ -496,7 +496,9 @@ void FatSystem::readFile(unsigned int cluster, unsigned int size, FILE *f, bool 
     if (f == NULL) {
         f = stdout;
     }
-
+#ifdef WIN32
+    _setmode(_fileno(f), _O_BINARY);
+#endif
     while ((size!=0) && cluster!=FAT_LAST) {
         int currentCluster = cluster;
         int toRead = size;
@@ -676,6 +678,8 @@ void FatSystem::readFile(FatPath &path, FILE *f)
         }
         readFile(entry.cluster, entry.size, f, contiguous);
     }
+    else
+            fprintf(stderr, "! File not found\n");
 }
 
 void FatSystem::setListDeleted(bool listDeleted_)
