@@ -6,14 +6,14 @@ OBJS = $(SOURCES:.cpp=.o)
 
 INCLUDES = -Isrc -Ilibdsk/include
 
-TARGET = fatcat
-
 ifeq ($(OS),Windows_NT)
-	CFLAGS = -DNOTWINDLL
+	CFLAGS = -DNOTWINDLL -g
 	LDFLAGS = -static
+	TARGET = fatcat.exe
 else
 	CFLAGS = 
 	LDFLAGS = 
+	TARGET = fatcat
 endif
 	
 LDFLAGS += -Llibdsk/lib/.libs 

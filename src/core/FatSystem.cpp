@@ -195,8 +195,10 @@ unsigned int FatSystem::nextCluster(unsigned int cluster, int fat)
         return cache[cluster];
     }
 
-    vector<char> sector = readData(fatStart+fatSize*fat+((cluster*bytes)/bytesPerSector), 1);
-    char* buffer = &sector[(cluster*bytes)%bytesPerSector];
+    int offset = (float)(cluster * bytes) * (bits == 12 ? 12.0/16.0 : 1.0);
+
+    vector<char> sector = readData(fatStart+((fatSize*fat+offset)/bytesPerSector), bits == 12 ? 2 : 1);
+    char* buffer = &sector[offset%bytesPerSector];
 
     unsigned int next;
 
@@ -243,10 +245,11 @@ bool FatSystem::writeNextCluster(unsigned int cluster, unsigned int next, int fa
         throw string("Trying to access a cluster outside bounds");
     }
 
-    int address = fatStart+fatSize*fat+(bytes*cluster)/bytesPerSector;
-    int offset = (bytes*cluster)%bytesPerSector;
-    vector<char> sector = readData(address, 1);
-    char* buffer = &sector[offset];
+    int offset = (float)(cluster * bytes) * (bits == 12 ? 12.0/16.0 : 1.0);
+    int address = fatStart+((fatSize*fat+offset)/bytesPerSector);
+
+    vector<char> sector = readData(address, bits == 12 ? 2 : 1);
+    char* buffer = &sector[offset%bytesPerSector];
 
     if (bits == 12) {
         int bit = cluster*bits;
@@ -264,7 +267,7 @@ bool FatSystem::writeNextCluster(unsigned int cluster, unsigned int next, int fa
         }
     }
 
-    return writeData(address, &sector[0], 1) != 0;
+    return writeData(address, &sector[0], bits == 12 ? 2 : 1) != 0;
 }
 
 bool FatSystem::validCluster(unsigned int cluster)
@@ -281,7 +284,7 @@ unsigned long long FatSystem::clusterAddress(unsigned int cluster, bool isRoot)
     unsigned long long addr = (dataStart + sectorsPerCluster*cluster);
 
     if (type == FAT16 && !isRoot) {
-        addr += rootEntries * FAT_ENTRY_SIZE;
+        addr += (rootEntries * FAT_ENTRY_SIZE) / bytesPerSector;
     }
 
     return addr;
@@ -581,7 +584,7 @@ void FatSystem::infos()
     cout << "Sectors per FAT: " << sectorsPerFat << endl;
     cout << "Fat size: " << fatSize << " (" << prettySize(fatSize) << ")" << endl;
     printf("FAT1 start sector: %llx\n", fatStart);
-    printf("FAT2 start sector: %llx\n", fatStart+fatSize);
+    printf("FAT2 start sector: %llx\n", fatStart+(fatSize/bytesPerSector));
     printf("Data start sector: %llx\n", dataStart);
     cout << "Root directory cluster: " << rootDirectory << endl;
     cout << "Disk label: " << diskLabel << endl;
