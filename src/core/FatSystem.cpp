@@ -327,6 +327,7 @@ vector<FatEntry> FatSystem::getEntries(unsigned int cluster, int *clusters, bool
         bool localZero = false;
         int localFound = 0;
         int localBadEntries = 0;
+        int sectors = isRoot ? rootSectors : sectorsPerCluster;
         unsigned long long address = clusterAddress(cluster, isRoot);
         if (visited.find(cluster) != visited.end()) {
             cerr << "! Looping directory" << endl;
@@ -336,7 +337,7 @@ vector<FatEntry> FatSystem::getEntries(unsigned int cluster, int *clusters, bool
 
         unsigned int i, j;
         
-        for (j=0; j<sectorsPerCluster; j++) {
+        for (j=0; j<sectors; j++) {
             vector<char> sector = readData(address+j, 1);
             for (i=0; i<bytesPerSector; i+=FAT_ENTRY_SIZE) {
                 char* buffer = &sector[i];
@@ -385,11 +386,7 @@ vector<FatEntry> FatSystem::getEntries(unsigned int cluster, int *clusters, bool
         int previousCluster = cluster;
 
         if (isRoot) {
-            if (cluster+1 < rootClusters) {
-                cluster++;
-            } else {
-                cluster = FAT_LAST;
-            }
+            cluster = FAT_LAST;
         } else {
             cluster = nextCluster(cluster);
         }
@@ -557,9 +554,7 @@ bool FatSystem::init()
     dataSize = totalClusters*bytesPerSector*sectorsPerCluster;
 
     if (type == FAT16) {
-        int rootBytes = rootEntries*32;
-        int bytesPerCluster = sectorsPerCluster*bytesPerSector;
-        rootClusters = rootBytes/bytesPerCluster + ((rootBytes%bytesPerCluster) ? 1 : 0);
+        rootSectors = rootEntries*32/bytesPerSector;
     }
 
     return strange == 0;
@@ -581,7 +576,7 @@ void FatSystem::infos()
     cout << "Reserved sectors: " << reservedSectors << endl;
     if (type == FAT16) {
         cout << "Root entries: " << rootEntries << endl;
-        cout << "Root clusters: " << rootClusters << endl;
+        cout << "Root sectors: " << rootSectors << endl;
     }
     cout << "Sectors per FAT: " << sectorsPerFat << endl;
     cout << "Fat size: " << fatSize << " (" << prettySize(fatSize) << ")" << endl;
